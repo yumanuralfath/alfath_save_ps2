@@ -1,17 +1,28 @@
+#include "cli.h"
 #include "vmc.h"
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 #include <sys/types.h>
 
 int main(int argc, char *argv[]) {
-  if (argc != 2) {
-    fprintf(stderr, "Usage: %s <vmc_file>\n", argv[0]);
-    fprintf(stderr, "  vmc_file: Path to VMC file\n");
+  if (argc < 2) {
+    print_help(argv[0]);
     return 1;
   }
 
-  const char *vmc_file = argv[1];
+  // Argumen pertama bisa opsi (--help / --version) atau path file
+  if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0) {
+    print_help(argv[0]);
+    return 0;
+  }
 
+  if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-v") == 0) {
+    print_version();
+    return 0;
+  }
+
+  const char *vmc_file = argv[1];
   FILE *fp = fopen(vmc_file, "rb");
   if (!fp) {
     fprintf(stderr, "Error: Cannot open file %s\n", vmc_file);

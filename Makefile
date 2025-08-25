@@ -1,8 +1,11 @@
 # Makefile for VMC Reader
 
+# --- Versioning (ambil dari git tag atau default "dev") ---
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+
 # Compiler settings
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c99 -O2 -g -Isrc/core -Isrc/db
+CFLAGS = -Wall -Wextra -std=c99 -O2 -g -Isrc/core -Isrc/db -Isrc/cli -DVERSION=\"$(VERSION)\"
 TARGET = vmcreader
 SRCDIR = src
 OBJDIR = obj
@@ -62,16 +65,22 @@ test: $(TARGET)
 # Show help
 help:
 	@echo "Available targets:"
-	@echo "  all      - Build the program (default)"
-	@echo "  clean    - Remove build files"
-	@echo "  debug    - Build with debug symbols"
-	@echo "  release  - Build optimized release version"
-	@echo "  install  - Install to system"
-	@echo "  uninstall- Remove from system"
-	@echo "  format   - Format source code"
-	@echo "  memcheck - Run valgrind memory check"
-	@echo "  test     - Run basic tests"
-	@echo "  help     - Show this help"
+	@echo "  all       - Build the program (default)"
+	@echo "  clean     - Remove build files"
+	@echo "  debug     - Build with debug symbols"
+	@echo "  release   - Build optimized release version"
+	@echo "  install   - Install to system"
+	@echo "  uninstall - Remove from system"
+	@echo "  format    - Format source code"
+	@echo "  memcheck  - Run valgrind memory check"
+	@echo "  test      - Run basic tests"
+	@echo "  help      - Show this help"
+	@echo "  version   - Show build version ($(VERSION))"
+
+# Show version
+version:
+	@echo $(VERSION)
 
 # Phony targets
-.PHONY: all clean install uninstall debug release format memcheck test help
+.PHONY: all clean install uninstall debug release format memcheck test help version
+
