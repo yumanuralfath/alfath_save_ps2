@@ -34,14 +34,15 @@ jobs:
 
           sudo -u aurbuild bash -c "makepkg --printsrcinfo > .SRCINFO"
 
-      - name: Commit & push to AUR
+      - name: Clone AUR repo
         env:
           AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
         run: |
-          eval "$(ssh-agent -s)"
-          ssh-add <(echo "$AUR_SSH_KEY")
+          git clone ssh://aur@aur.archlinux.org/alfathsave.git aur
+          cp PKGBUILD .SRCINFO aur/
+          cd aur
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git add PKGBUILD .SRCINFO
-          git commit -m "Update pkgver to ${RELEASE_TAG#v}"
-          git push ssh://aur@aur.archlinux.org/alfathsave.git master
+          git commit -m "Update pkgver to ${RELEASE_TAG#v}" || echo "No changes"
+          git push
