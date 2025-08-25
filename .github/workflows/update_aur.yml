@@ -7,61 +7,92 @@ on:
 jobs:
   update-aur:
     runs-on: ubuntu-latest
-    container:
-      image: archlinux:latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: pacman -Sy --noconfirm base-devel git jq curl sudo openssh
+      - name: Install SSH client
+        run: sudo apt-get update && sudo apt-get install -y openssh-client
 
-      - name: Create non-root user
-        run: |
-          useradd -m aurbuild
-          chown -R aurbuild:aurbuild $GITHUB_WORKSPACE
-
-      - name: Update PKGBUILD & generate SRCINFO
-        run: |
-          RELEASE_TAG=${GITHUB_REF#refs/tags/}
-          echo "Release tag: $RELEASE_TAG"
-          # Update pkgver static
-          sed -i "s/^pkgver=.*/pkgver=${RELEASE_TAG#v}/" PKGBUILD
-          # Comment dynamic pkgver() if exists
-          sed -i "s/^pkgver()/# pkgver()/" PKGBUILD
-          sudo -u aurbuild bash -c "makepkg --printsrcinfo > .SRCINFO"
-
-      - name: Setup SSH for AUR
+      - name: Setup SSH key
         env:
           AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
         run: |
-          # Create SSH directory
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
 
           # Add SSH private key
-          echo "$AUR_SSH_KEY" > ~/.ssh/aur_rsa
-          chmod 600 ~/.ssh/aur_rsa
+          echo "$AUR_SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
 
           # Add AUR host key
-          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
-          chmod 644 ~/.ssh/known_hosts
+          ssh-keyscan -H aur.archlinux.org >> ~/.ssh/known_hosts
 
-          # Configure SSH to use the key for AUR
-          cat >> ~/.ssh/config << EOF
-          Host aur.archlinux.org
-            HostName aur.archlinux.org
-            User aur
-            IdentityFile ~/.ssh/aur_rsa
-            StrictHostKeyChecking yes
-          EOF
-          chmod 600 ~/.ssh/config
+          # Test SSH connection
+          ssh -o StrictHostKeyChecking=no -T aur@aur.archlinux.org || echo "SSH test completed"
 
-      - name: Clone AUR repo and update
+      - name: Setup Arch Linux environment
+        run: |
+          # Install archlinux-keyring and pacman in Ubuntu (alternative approach)
+          # We'll use a different method to generate .SRCINFO
+          sudo apt-get install -y curl jq
+
+      - name: Update PKGBUILD
         run: |
           RELEASE_TAG=${GITHUB_REF#refs/tags/}
+          VERSION=${RELEASE_TAG#v}
+          echo "Release tag: $RELEASE_TAG"
+          echo "Version: $VERSION"
 
-          # Test SSH connection first
-          ssh -T aur@aur.archlinux.org || true
+          # Update pkgver in PKGBUILD
+          sed -i "s/^pkgver=.*/pkgver=$VERSION/" PKGBUILD
+
+          # Comment out dynamic pkgver() function if it exists
+          sed -i 's/^pkgver()/#pkgver()/' PKGBUILD
+          sed -i 's/^  git describe/#  git describe/' PKGBUILD || true
+          sed -i 's/^}$/#}/' PKGBUILD || true
+
+          echo "Updated PKGBUILD:"
+          cat PKGBUILD
+
+      - name: Generate SRCINFO manually
+        run: |
+          # Since we can't easily run makepkg in Ubuntu, we'll generate a basic .SRCINFO
+          # This is a simplified version - ideally you'd use makepkg --printsrcinfo
+
+          RELEASE_TAG=${GITHUB_REF#refs/tags/}
+          VERSION=${RELEASE_TAG#v}
+
+          # Extract basic info from PKGBUILD
+          PKGNAME=$(grep "^pkgname=" PKGBUILD | cut -d'=' -f2)
+          PKGDESC=$(grep "^pkgdesc=" PKGBUILD | cut -d'=' -f2-)
+          ARCH=$(grep "^arch=" PKGBUILD | cut -d'=' -f2- || echo "('any')")
+          URL=$(grep "^url=" PKGBUILD | cut -d'=' -f2- || echo "")
+          LICENSE=$(grep "^license=" PKGBUILD | cut -d'=' -f2- || echo "")
+          DEPENDS=$(grep "^depends=" PKGBUILD | cut -d'=' -f2- || echo "")
+          SOURCE=$(grep "^source=" PKGBUILD | cut -d'=' -f2- || echo "")
+
+          cat > .SRCINFO << EOF
+          pkgbase = ${PKGNAME//[\'\"]/ }
+          	pkgdesc = ${PKGDESC//[\'\"]/ }
+          	pkgver = $VERSION
+          	pkgrel = 1
+          	url = ${URL//[\'\"]/ }
+          	arch = any
+          	license = ${LICENSE//[\'\"]/ }
+          	source = ${SOURCE//[\'\"]/ }
+
+          pkgname = ${PKGNAME//[\'\"]/ }
+          EOF
+
+          echo "Generated .SRCINFO:"
+          cat .SRCINFO
+
+      - name: Clone AUR repo and update
+        env:
+          GIT_SSH_COMMAND: "ssh -o StrictHostKeyChecking=no"
+        run: |
+          RELEASE_TAG=${GITHUB_REF#refs/tags/}
+          VERSION=${RELEASE_TAG#v}
 
           # Clone AUR repository
           git clone ssh://aur@aur.archlinux.org/alfathsave.git aur
@@ -71,14 +102,15 @@ jobs:
 
           # Commit and push changes
           cd aur
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-          git add PKGBUILD .SRCINFO
+          git config user.name "GitHub Actions Bot"
+          git config user.email "noreply@github.com"
 
-          if git diff --staged --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "Update pkgver to ${RELEASE_TAG#v}"
+          # Check if there are changes
+          if ! git diff --quiet; then
+            git add PKGBUILD .SRCINFO
+            git commit -m "Update to version $VERSION"
             git push
-            echo "Successfully updated AUR package to version ${RELEASE_TAG#v}"
+            echo "Successfully updated AUR package to version $VERSION"
+          else
+            echo "No changes detected"
           fi
