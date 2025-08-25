@@ -1,5 +1,4 @@
 name: Update AUR pkgver
-
 on:
   push:
     tags:
@@ -10,7 +9,6 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: archlinux:latest
-
     steps:
       - uses: actions/checkout@v4
 
@@ -26,28 +24,61 @@ jobs:
         run: |
           RELEASE_TAG=${GITHUB_REF#refs/tags/}
           echo "Release tag: $RELEASE_TAG"
-
-          # Update pkgver statis
+          # Update pkgver static
           sed -i "s/^pkgver=.*/pkgver=${RELEASE_TAG#v}/" PKGBUILD
-          # Comment dynamic pkgver() jika ada
+          # Comment dynamic pkgver() if exists
           sed -i "s/^pkgver()/# pkgver()/" PKGBUILD
-
           sudo -u aurbuild bash -c "makepkg --printsrcinfo > .SRCINFO"
 
-      - name: Setup SSH known_hosts
-        run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
-
-      - name: Clone AUR repo
+      - name: Setup SSH for AUR
         env:
           AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
         run: |
+          # Create SSH directory
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          # Add SSH private key
+          echo "$AUR_SSH_KEY" > ~/.ssh/aur_rsa
+          chmod 600 ~/.ssh/aur_rsa
+
+          # Add AUR host key
+          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+          # Configure SSH to use the key for AUR
+          cat >> ~/.ssh/config << EOF
+          Host aur.archlinux.org
+            HostName aur.archlinux.org
+            User aur
+            IdentityFile ~/.ssh/aur_rsa
+            StrictHostKeyChecking yes
+          EOF
+          chmod 600 ~/.ssh/config
+
+      - name: Clone AUR repo and update
+        run: |
+          RELEASE_TAG=${GITHUB_REF#refs/tags/}
+
+          # Test SSH connection first
+          ssh -T aur@aur.archlinux.org || true
+
+          # Clone AUR repository
           git clone ssh://aur@aur.archlinux.org/alfathsave.git aur
+
+          # Copy updated files
           cp PKGBUILD .SRCINFO aur/
+
+          # Commit and push changes
           cd aur
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git add PKGBUILD .SRCINFO
-          git commit -m "Update pkgver to ${RELEASE_TAG#v}" || echo "No changes"
-          git push
+
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update pkgver to ${RELEASE_TAG#v}"
+            git push
+            echo "Successfully updated AUR package to version ${RELEASE_TAG#v}"
+          fi
