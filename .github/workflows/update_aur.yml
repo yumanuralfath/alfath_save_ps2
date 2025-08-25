@@ -9,26 +9,18 @@ on:
 jobs:
   update-aur:
     runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
 
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y git curl jq
-
-      - name: Get release info
-        id: release
-        run: |
-          # Ambil tag terbaru dari push
-          echo "RELEASE_TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-          echo "Release tag: $RELEASE_TAG"
+        run: pacman -Sy --noconfirm base-devel git jq curl
 
       - name: Update PKGBUILD
         run: |
-          # Update pkgver di PKGBUILD
           sed -i "s/^pkgver=.*/pkgver=${RELEASE_TAG#v}/" PKGBUILD
-          # Generate .SRCINFO
           makepkg --printsrcinfo > .SRCINFO
 
       - name: Push to AUR

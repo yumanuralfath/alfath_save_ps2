@@ -6,7 +6,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 # Compiler settings
 CC = gcc
 CFLAGS = -Wall -Wextra -std=c99 -O2 -g -Isrc/core -Isrc/db -Isrc/cli -DVERSION=\"$(VERSION)\"
-TARGET = alfath
+TARGET = alfathsave
 SRCDIR = src
 OBJDIR = obj
 

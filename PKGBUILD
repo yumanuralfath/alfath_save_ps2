@@ -1,6 +1,6 @@
 # Maintainer: Yuma Nur Alfath <yuma@yumana.my.id>
 pkgname=alfathsave
-pkgver=1.0.1 # versi statis untuk commit ke AUR
+pkgver=1.1.1 # versi statis untuk commit ke AUR
 pkgrel=1
 pkgdesc="Alfath Save - PS2 VMC save file reader"
 arch=('x86_64')

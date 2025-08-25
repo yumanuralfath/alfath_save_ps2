@@ -1,5 +1,5 @@
 # .github/workflows/release.yml
-name: Release VMC Reader
+name: Release Alfath Save
 
 on:
   push:
@@ -26,12 +26,12 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: vmcreader
-          path: vmcreader
+          name: alfathsave
+          path: alfathsave
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: vmcreader
+          files: alfathsave
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
