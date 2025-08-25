@@ -1,0 +1,44 @@
+name: Update AUR pkgver
+
+# Trigger hanya ketika push tag
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  update-aur:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y git curl jq
+
+      - name: Get release info
+        id: release
+        run: |
+          # Ambil tag terbaru dari push
+          echo "RELEASE_TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+          echo "Release tag: $RELEASE_TAG"
+
+      - name: Update PKGBUILD
+        run: |
+          # Update pkgver di PKGBUILD
+          sed -i "s/^pkgver=.*/pkgver=${RELEASE_TAG#v}/" PKGBUILD
+          # Generate .SRCINFO
+          makepkg --printsrcinfo > .SRCINFO
+
+      - name: Push to AUR
+        env:
+          AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
+        run: |
+          eval "$(ssh-agent -s)"
+          ssh-add <(echo "$AUR_SSH_KEY")
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add PKGBUILD .SRCINFO
+          git commit -m "Update pkgver to ${RELEASE_TAG#v}"
+          git push ssh://aur@aur.archlinux.org/alfathsave.git master
