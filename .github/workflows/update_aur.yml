@@ -33,16 +33,8 @@ jobs:
           RELEASE_TAG=${GITHUB_REF#refs/tags/}
           VERSION=${RELEASE_TAG#v}
           echo "Updating to version: $VERSION"
-
-          # Update pkgver in PKGBUILD
           sed -i "s/^pkgver=.*/pkgver=$VERSION/" PKGBUILD
-
-          # Comment out pkgver() function if it exists to avoid conflicts
-          # This is a good practice if your version is set directly from the tag
           sed -i '/^pkgver()/,/^}$/ s/^/# /' PKGBUILD
-
-          # Run Arch container to generate SRCINFO
-          # This command changes file ownership inside the workspace
           docker run --rm \
             -v $PWD:/workspace \
             -w /workspace \
@@ -53,20 +45,15 @@ jobs:
               chown -R builder:builder /workspace
               sudo -u builder makepkg --printsrcinfo > .SRCINFO
             "
-
           echo "Generated .SRCINFO:"
           cat .SRCINFO
 
       - name: Restore workspace ownership
         run: |
-          # The previous Docker step changes the owner of the workspace directory.
-          # We need to change it back to the current user to allow subsequent steps
-          # (like git clone) to write to the directory.
           sudo chown -R $(id -u):$(id -g) $PWD
 
       - name: Clone AUR repository
         run: |
-          # Now this step will have the correct permissions to create the 'aur-repo' directory
           git clone ssh://aur@aur.archlinux.org/alfathsave.git aur-repo
 
       - name: Update AUR repository
@@ -83,14 +70,18 @@ jobs:
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
 
-          # Check for changes and commit
-          if git diff --quiet && git diff --cached --quiet; then
-            echo "No changes to commit"
-          else
-            git add PKGBUILD .SRCINFO
+          # Add files to staging
+          git add PKGBUILD .SRCINFO
+
+          # This check is more reliable, especially for the initial commit.
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "Changes detected. Committing and pushing..."
             git commit -m "Update to version $VERSION"
             
-            # Push changes
-            git push
+            # The '-u' flag sets the upstream branch, which is necessary for the first push.
+            git push -u origin master
+            
             echo "✅ Successfully updated AUR package to version $VERSION"
+          else
+            echo "No changes to commit"
           fi
