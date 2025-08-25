@@ -18,10 +18,15 @@ jobs:
       - name: Install dependencies
         run: pacman -Sy --noconfirm base-devel git jq curl
 
-      - name: Update PKGBUILD
+      - name: Create non root user
+        run: |
+          useradd -m aurbuild
+          chown -R aurbuild:aurbuild $GITHUB_WORKSPACE
+
+      - name: Update PKGBUILD and generate SRCINFO
         run: |
           sed -i "s/^pkgver=.*/pkgver=${RELEASE_TAG#v}/" PKGBUILD
-          makepkg --printsrcinfo > .SRCINFO
+          sudo -u aurbuild bash -c "makepkg --printsrcinfo > .SRCINFO"
 
       - name: Push to AUR
         env:
