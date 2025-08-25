@@ -10,107 +10,81 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install SSH client
-        run: sudo apt-get update && sudo apt-get install -y openssh-client
+      - name: Setup SSH key for AUR
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.AUR_SSH_KEY }}
 
-      - name: Setup SSH key
-        env:
-          AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
+      - name: Add AUR to known hosts
         run: |
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-
-          # Add SSH private key
-          echo "$AUR_SSH_KEY" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-
-          # Add AUR host key
           ssh-keyscan -H aur.archlinux.org >> ~/.ssh/known_hosts
 
-          # Test SSH connection
-          ssh -o StrictHostKeyChecking=no -T aur@aur.archlinux.org || echo "SSH test completed"
-
-      - name: Setup Arch Linux environment
+      - name: Test SSH connection
         run: |
-          # Install archlinux-keyring and pacman in Ubuntu (alternative approach)
-          # We'll use a different method to generate .SRCINFO
-          sudo apt-get install -y curl jq
+          ssh -T aur@aur.archlinux.org || echo "SSH connection test completed"
 
-      - name: Update PKGBUILD
+      - name: Setup Arch Linux in Docker
+        run: |
+          # Pull and run Arch Linux container with SSH agent forwarding
+          docker pull archlinux:latest
+
+      - name: Update PKGBUILD and generate SRCINFO
         run: |
           RELEASE_TAG=${GITHUB_REF#refs/tags/}
           VERSION=${RELEASE_TAG#v}
-          echo "Release tag: $RELEASE_TAG"
-          echo "Version: $VERSION"
+          echo "Updating to version: $VERSION"
 
           # Update pkgver in PKGBUILD
           sed -i "s/^pkgver=.*/pkgver=$VERSION/" PKGBUILD
 
-          # Comment out dynamic pkgver() function if it exists
-          sed -i 's/^pkgver()/#pkgver()/' PKGBUILD
-          sed -i 's/^  git describe/#  git describe/' PKGBUILD || true
-          sed -i 's/^}$/#}/' PKGBUILD || true
+          # Comment out pkgver() function if it exists
+          sed -i '/^pkgver()/,/^}$/ s/^/# /' PKGBUILD
 
-          echo "Updated PKGBUILD:"
-          cat PKGBUILD
-
-      - name: Generate SRCINFO manually
-        run: |
-          # Since we can't easily run makepkg in Ubuntu, we'll generate a basic .SRCINFO
-          # This is a simplified version - ideally you'd use makepkg --printsrcinfo
-
-          RELEASE_TAG=${GITHUB_REF#refs/tags/}
-          VERSION=${RELEASE_TAG#v}
-
-          # Extract basic info from PKGBUILD
-          PKGNAME=$(grep "^pkgname=" PKGBUILD | cut -d'=' -f2)
-          PKGDESC=$(grep "^pkgdesc=" PKGBUILD | cut -d'=' -f2-)
-          ARCH=$(grep "^arch=" PKGBUILD | cut -d'=' -f2- || echo "('any')")
-          URL=$(grep "^url=" PKGBUILD | cut -d'=' -f2- || echo "")
-          LICENSE=$(grep "^license=" PKGBUILD | cut -d'=' -f2- || echo "")
-          DEPENDS=$(grep "^depends=" PKGBUILD | cut -d'=' -f2- || echo "")
-          SOURCE=$(grep "^source=" PKGBUILD | cut -d'=' -f2- || echo "")
-
-          cat > .SRCINFO << EOF
-          pkgbase = ${PKGNAME//[\'\"]/ }
-          	pkgdesc = ${PKGDESC//[\'\"]/ }
-          	pkgver = $VERSION
-          	pkgrel = 1
-          	url = ${URL//[\'\"]/ }
-          	arch = any
-          	license = ${LICENSE//[\'\"]/ }
-          	source = ${SOURCE//[\'\"]/ }
-
-          pkgname = ${PKGNAME//[\'\"]/ }
-          EOF
+          # Run Arch container to generate SRCINFO
+          docker run --rm \
+            -v $PWD:/workspace \
+            -w /workspace \
+            archlinux:latest \
+            bash -c "
+              pacman -Sy --noconfirm base-devel git
+              useradd -m builder
+              chown -R builder:builder /workspace
+              sudo -u builder makepkg --printsrcinfo > .SRCINFO
+            "
 
           echo "Generated .SRCINFO:"
           cat .SRCINFO
 
-      - name: Clone AUR repo and update
-        env:
-          GIT_SSH_COMMAND: "ssh -o StrictHostKeyChecking=no"
+      - name: Clone AUR repository
+        run: |
+          # Forward SSH agent to access AUR
+          ssh-add -l
+          git clone ssh://aur@aur.archlinux.org/alfathsave.git aur-repo
+
+      - name: Update AUR repository
         run: |
           RELEASE_TAG=${GITHUB_REF#refs/tags/}
           VERSION=${RELEASE_TAG#v}
 
-          # Clone AUR repository
-          git clone ssh://aur@aur.archlinux.org/alfathsave.git aur
+          # Copy updated files to AUR repo
+          cp PKGBUILD .SRCINFO aur-repo/
 
-          # Copy updated files
-          cp PKGBUILD .SRCINFO aur/
+          cd aur-repo
 
-          # Commit and push changes
-          cd aur
-          git config user.name "GitHub Actions Bot"
-          git config user.email "noreply@github.com"
+          # Configure git
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
 
-          # Check if there are changes
-          if ! git diff --quiet; then
-            git add PKGBUILD .SRCINFO
-            git commit -m "Update to version $VERSION"
-            git push
-            echo "Successfully updated AUR package to version $VERSION"
+          # Check for changes and commit
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "No changes to commit"
           else
-            echo "No changes detected"
+            git add PKGBUILD .SRCINFO
+            git commit -m "Update to version $VERSION
+            
+            Auto-updated from GitHub release $RELEASE_TAG"
+            
+            # Push changes
+            git push origin master
+            echo "✅ Successfully updated AUR package to version $VERSION"
           fi
