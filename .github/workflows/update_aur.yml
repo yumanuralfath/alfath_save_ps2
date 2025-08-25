@@ -1,4 +1,5 @@
 name: Update AUR pkgver
+
 on:
   push:
     tags:
@@ -25,7 +26,6 @@ jobs:
 
       - name: Setup Arch Linux in Docker
         run: |
-          # Pull and run Arch Linux container with SSH agent forwarding
           docker pull archlinux:latest
 
       - name: Update PKGBUILD and generate SRCINFO
@@ -37,10 +37,12 @@ jobs:
           # Update pkgver in PKGBUILD
           sed -i "s/^pkgver=.*/pkgver=$VERSION/" PKGBUILD
 
-          # Comment out pkgver() function if it exists
+          # Comment out pkgver() function if it exists to avoid conflicts
+          # This is a good practice if your version is set directly from the tag
           sed -i '/^pkgver()/,/^}$/ s/^/# /' PKGBUILD
 
           # Run Arch container to generate SRCINFO
+          # This command changes file ownership inside the workspace
           docker run --rm \
             -v $PWD:/workspace \
             -w /workspace \
@@ -55,10 +57,16 @@ jobs:
           echo "Generated .SRCINFO:"
           cat .SRCINFO
 
+      - name: Restore workspace ownership
+        run: |
+          # The previous Docker step changes the owner of the workspace directory.
+          # We need to change it back to the current user to allow subsequent steps
+          # (like git clone) to write to the directory.
+          sudo chown -R $(id -u):$(id -g) $PWD
+
       - name: Clone AUR repository
         run: |
-          # Forward SSH agent to access AUR
-          ssh-add -l
+          # Now this step will have the correct permissions to create the 'aur-repo' directory
           git clone ssh://aur@aur.archlinux.org/alfathsave.git aur-repo
 
       - name: Update AUR repository
@@ -80,11 +88,9 @@ jobs:
             echo "No changes to commit"
           else
             git add PKGBUILD .SRCINFO
-            git commit -m "Update to version $VERSION
-            
-            Auto-updated from GitHub release $RELEASE_TAG"
+            git commit -m "Update to version $VERSION"
             
             # Push changes
-            git push origin master
+            git push
             echo "✅ Successfully updated AUR package to version $VERSION"
           fi
