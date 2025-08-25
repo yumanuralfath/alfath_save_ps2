@@ -1,6 +1,5 @@
 name: Update AUR pkgver
 
-# Trigger hanya ketika push tag
 on:
   push:
     tags:
@@ -16,19 +15,26 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install dependencies
-        run: pacman -Sy --noconfirm base-devel git jq curl
+        run: pacman -Sy --noconfirm base-devel git jq curl sudo
 
-      - name: Create non root user
+      - name: Create non-root user
         run: |
           useradd -m aurbuild
           chown -R aurbuild:aurbuild $GITHUB_WORKSPACE
 
-      - name: Update PKGBUILD and generate SRCINFO
+      - name: Update PKGBUILD & generate SRCINFO
         run: |
+          RELEASE_TAG=${GITHUB_REF#refs/tags/}
+          echo "Release tag: $RELEASE_TAG"
+
+          # Update pkgver statis
           sed -i "s/^pkgver=.*/pkgver=${RELEASE_TAG#v}/" PKGBUILD
+          # Comment dynamic pkgver() jika ada
+          sed -i "s/^pkgver()/# pkgver()/" PKGBUILD
+
           sudo -u aurbuild bash -c "makepkg --printsrcinfo > .SRCINFO"
 
-      - name: Push to AUR
+      - name: Commit & push to AUR
         env:
           AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
         run: |
