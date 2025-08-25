@@ -4,7 +4,6 @@
 
 - [VMC Reader - PlayStation 2 Memory Card Reader](#vmc-reader-playstation-2-memory-card-reader)
   - [Features](#features)
-  - [Project Structure](#project-structure)
   - [Building](#building)
     - [Quick Build](#quick-build)
     - [Debug Build (with debug symbols)](#debug-build-with-debug-symbols)
@@ -41,19 +40,6 @@ A C program to read and analyze PlayStation 2 Virtual Memory Card (VMC) files, d
 - **Smart save parsing**: Automatically extracts game IDs from save names
 - **Memory usage analysis**: Shows used/free space correctly
 - **Clean directory listing**: Displays save games with creation/modification dates
-
-## Project Structure
-
-```
-vmcreader/
-├── vmc.h           # Header file with all structures and prototypes
-├── main.c          # Main program entry point
-├── vmc_core.c      # Core VMC reading functions
-├── vmc_display.c   # Display and formatting functions
-├── titles_db.c     # Game titles database
-├── Makefile        # Build configuration
-└── README.md       # This file
-```
 
 ## Building
 
