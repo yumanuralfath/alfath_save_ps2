@@ -1,14 +1,35 @@
-# Makefile for VMC Reader
+# Makefile for Alfath Save PS2
 
 # --- Versioning (ambil dari git tag atau default "dev") ---
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 
-# Compiler settings
-CC = gcc
+# --- Cross-Platform Compatibility ---
+# Tentukan variabel berdasarkan Sistem Operasi
+# OS_NAME akan berisi "Windows", "Linux", atau "Darwin" (untuk macOS)
+OS_NAME := $(shell uname -s)
+
+# Compiler settings - ?= agar bisa di-override dari environment
+CC ?= gcc
 CFLAGS = -Wall -Wextra -std=c99 -O2 -g -Isrc/core -Isrc/db -Isrc/cli -DVERSION=\"$(VERSION)\"
-TARGET = alfathsave
+
+# Target executable name
+TARGET_NAME = alfathsave
 SRCDIR = src
 OBJDIR = obj
+
+# Tambahkan .exe untuk Windows
+ifeq ($(findstring MINGW,$(OS_NAME)),MINGW)
+    TARGET_EXT = .exe
+    RM = del /Q /F
+    # Ganti backslash untuk path di Windows
+    fixpath = $(subst /,\,$1)
+else
+    TARGET_EXT =
+    RM = rm -rf
+    fixpath = $1
+endif
+
+EXECUTABLE = $(TARGET_NAME)$(TARGET_EXT)
 
 # Cari semua file .c di src/ secara rekursif
 SOURCES := $(shell find $(SRCDIR) -name "*.c")
@@ -16,10 +37,10 @@ SOURCES := $(shell find $(SRCDIR) -name "*.c")
 OBJECTS := $(patsubst $(SRCDIR)/%.c,$(OBJDIR)/%.o,$(SOURCES))
 
 # Default target
-all: $(TARGET)
+all: $(EXECUTABLE)
 
 # Linking
-$(TARGET): $(OBJECTS)
+$(EXECUTABLE): $(OBJECTS)
 	$(CC) $(CFLAGS) -o $@ $^
 
 # Compile source files
@@ -29,38 +50,41 @@ $(OBJDIR)/%.o: $(SRCDIR)/%.c
 
 # Clean build files
 clean:
-	rm -rf $(OBJDIR) $(TARGET)
+	-$(RM) $(call fixpath, $(OBJDIR))
+	-$(RM) $(EXECUTABLE)
 
-# Install (optional)
-install: $(TARGET)
-	cp $(TARGET) /usr/local/bin/
-	@echo "Installed $(TARGET) to /usr/local/bin/"
+# Install (optional - Unix-like specific)
+install: $(EXECUTABLE)
+	@echo "Install target is for Unix-like systems (Linux/macOS)."
+	cp $(EXECUTABLE) /usr/local/bin/
+	@echo "Installed $(EXECUTABLE) to /usr/local/bin/"
 
-# Uninstall (optional)
+# Uninstall (optional - Unix-like specific)
 uninstall:
-	rm -f /usr/local/bin/$(TARGET)
-	@echo "Uninstalled $(TARGET)"
+	@echo "Uninstall target is for Unix-like systems (Linux/macOS)."
+	rm -f /usr/local/bin/$(TARGET_NAME)
+	@echo "Uninstalled $(TARGET_NAME)"
 
 # Debug build
 debug: CFLAGS += -DDEBUG -g3
-debug: $(TARGET)
+debug: $(EXECUTABLE)
 
 # Release build
 release: CFLAGS += -DNDEBUG -O3
-release: clean $(TARGET)
+release: clean $(EXECUTABLE)
 
 # Format code (requires clang-format)
 format:
 	clang-format -i *.c *.h
 
-# Check for memory leaks (requires valgrind)
-memcheck: $(TARGET)
-	valgrind --leak-check=full --show-leak-kinds=all ./$(TARGET) test.vmc
+# Check for memory leaks (requires valgrind - Unix-like specific)
+memcheck: $(EXECUTABLE)
+	valgrind --leak-check=full --show-leak-kinds=all ./$(EXECUTABLE) test.vmc
 
 # Run tests (if you add test files later)
-test: $(TARGET)
+test: $(EXECUTABLE)
 	@echo "Running tests..."
-	@./$(TARGET) --help || echo "Help test passed"
+	@./$(EXECUTABLE) --help || echo "Help test passed"
 
 # Show help
 help:
@@ -69,10 +93,10 @@ help:
 	@echo "  clean     - Remove build files"
 	@echo "  debug     - Build with debug symbols"
 	@echo "  release   - Build optimized release version"
-	@echo "  install   - Install to system"
-	@echo "  uninstall - Remove from system"
+	@echo "  install   - Install to system (Linux/macOS)"
+	@echo "  uninstall - Remove from system (Linux/macOS)"
 	@echo "  format    - Format source code"
-	@echo "  memcheck  - Run valgrind memory check"
+	@echo "  memcheck  - Run valgrind memory check (Linux/macOS)"
 	@echo "  test      - Run basic tests"
 	@echo "  help      - Show this help"
 	@echo "  version   - Show build version ($(VERSION))"
@@ -83,4 +107,3 @@ version:
 
 # Phony targets
 .PHONY: all clean install uninstall debug release format memcheck test help version
-

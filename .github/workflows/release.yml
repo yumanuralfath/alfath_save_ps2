@@ -7,31 +7,82 @@ on:
       - "v*.*.*"
 
 jobs:
-  build-release:
-    name: Build and Release
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
+  build:
+    name: Build for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y build-essential clang-format valgrind
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y build-essential
+
+      # Catatan: Untuk Windows dan macOS, build-essential biasanya sudah ada
+      # atau menggunakan toolchain yang berbeda (seperti MSVC/Clang).
+      # Sesuaikan langkah ini jika perlu dependensi khusus.
+      - name: Install dependencies (Windows)
+        if: runner.os == 'Windows'
+        run: choco install make # Contoh jika 'make' belum ada
 
       - name: Build (release)
         run: make release
 
+      - name: Package artifact (Linux/macOS)
+        if: runner.os == 'Linux' || runner.os == 'macOS'
+        run: |
+          # Dapatkan nama executable dari Makefile jika ada, atau gunakan nama statis
+          EXECUTABLE_NAME=alfathsave 
+          # Buat nama arsip dinamis berdasarkan tag dan OS
+          ARCHIVE_NAME="${EXECUTABLE_NAME}-${{ github.ref_name }}-${{ runner.os }}"
+          tar -czvf "${ARCHIVE_NAME}.tar.gz" $EXECUTABLE_NAME
+          echo "ASSET_PATH=${ARCHIVE_NAME}.tar.gz" >> $GITHUB_ENV
+
+      - name: Package artifact (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          $EXECUTABLE_NAME = "alfathsave.exe" # Sesuaikan jika nama file berbeda di Windows
+          $ARCHIVE_NAME = "${EXECUTABLE_NAME}-${{ github.ref_name }}-${{ runner.os }}"
+          Compress-Archive -Path $EXECUTABLE_NAME -DestinationPath "$ARCHIVE_NAME.zip"
+          echo "ASSET_PATH=$ARCHIVE_NAME.zip" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: alfathsave
-          path: alfathsave
+          name: release-assets
+          path: ${{ env.ASSET_PATH }}
+
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    needs: build # Menandakan job ini berjalan setelah job 'build' selesai
+
+    steps:
+      - name: Download all release assets
+        uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+          path: release-assets # Direktori untuk menyimpan semua aset
+
+      - name: Generate checksums
+        run: |
+          cd release-assets
+          sha256sum * > SHA256SUMS.txt
+          cd ..
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: alfathsave
+          # Membuat catatan rilis otomatis dari commit
+          generate_release_notes: true
+          # Mengunggah semua file dari direktori release-assets
+          files: |
+            release-assets/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

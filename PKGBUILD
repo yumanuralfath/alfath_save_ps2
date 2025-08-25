@@ -18,5 +18,5 @@ build() {
 
 package() {
   cd "$srcdir/alfath_save_ps2-${pkgver}"
-  install -Dm755 vmcreader "$pkgdir/usr/bin/alfathsave"
+  install -Dm755 alfathsave "$pkgdir/usr/bin/alfathsave"
 }
